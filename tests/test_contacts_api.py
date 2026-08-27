@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import inspect, select
 
 from app.database import SessionLocal, engine
-from app.models import Address, Contact
+from app.models import Address, Contact, CryptoWallet
 from app.schemas import (
     MAX_PHOTO_BYTES,
     MAX_PHOTO_DATA_URI_CHARS,
@@ -25,6 +25,10 @@ def address(address_type: str, street: str = "1 Market St") -> dict:
         "postal_code": "94105",
         "country": "USA",
     }
+
+
+def wallet(chain: str, value: str = "public-wallet-address") -> dict:
+    return {"chain": chain, "address": value}
 
 
 def test_health(client):
@@ -118,6 +122,60 @@ def test_contact_with_no_addresses_is_valid(client, payload):
     response = client.post(BASE, json=payload)
     assert response.status_code == 201
     assert response.json()["addresses"] == []
+
+
+def test_create_and_read_multiple_crypto_wallets(client, payload):
+    wallets = [wallet("Bitcoin", "bc1-demo"), wallet("Solana", "9xQe-demo")]
+    created = client.post(BASE, json={**payload, "crypto_wallets": wallets})
+    assert created.status_code == 201
+    assert [item["chain"] for item in created.json()["crypto_wallets"]] == [
+        "Bitcoin",
+        "Solana",
+    ]
+    fetched = client.get(f"{BASE}/{created.json()['id']}").json()
+    assert fetched["crypto_wallets"] == created.json()["crypto_wallets"]
+
+
+@pytest.mark.parametrize("chain", ["Bitcoin", "Ethereum", "Solana", "Base", "Polygon"])
+def test_accepts_supported_wallet_chains(client, payload, chain):
+    response = client.post(BASE, json={**payload, "crypto_wallets": [wallet(chain)]})
+    assert response.status_code == 201
+
+
+def test_rejects_invalid_wallet_chain_and_blank_address(client, payload):
+    invalid = client.post(BASE, json={**payload, "crypto_wallets": [wallet("Dogecoin")]})
+    blank = client.post(BASE, json={**payload, "crypto_wallets": [wallet("Base", "  ")]})
+    assert invalid.status_code == 422
+    assert blank.status_code == 422
+
+
+def test_put_replaces_crypto_wallets_without_orphans(client, payload):
+    created = client.post(
+        BASE,
+        json={**payload, "crypto_wallets": [wallet("Ethereum"), wallet("Base", "0xbase")]},
+    ).json()
+    old_ids = {item["id"] for item in created["crypto_wallets"]}
+    response = client.put(
+        f"{BASE}/{created['id']}",
+        json={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@example.com",
+            "crypto_wallets": [wallet("Polygon", "0xpolygon")],
+        },
+    )
+    assert [item["chain"] for item in response.json()["crypto_wallets"]] == ["Polygon"]
+    with SessionLocal() as db:
+        assert db.scalars(select(CryptoWallet).where(CryptoWallet.id.in_(old_ids))).all() == []
+
+
+def test_patch_omission_preserves_crypto_wallets(client, payload):
+    created = client.post(
+        BASE, json={**payload, "crypto_wallets": [wallet("Solana", "9xQe-demo")]}
+    ).json()
+    response = client.patch(f"{BASE}/{created['id']}", json={"company": "New Company"})
+    assert response.status_code == 200
+    assert response.json()["crypto_wallets"] == created["crypto_wallets"]
 
 
 def test_addresses_table_has_contact_foreign_key(client):

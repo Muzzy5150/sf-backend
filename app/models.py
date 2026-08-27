@@ -17,6 +17,14 @@ class AddressType(str, Enum):
     OTHER = "Other"
 
 
+class WalletChain(str, Enum):
+    BITCOIN = "Bitcoin"
+    ETHEREUM = "Ethereum"
+    SOLANA = "Solana"
+    BASE = "Base"
+    POLYGON = "Polygon"
+
+
 class Contact(Base):
     __tablename__ = "contacts"
 
@@ -38,6 +46,12 @@ class Contact(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
         order_by="Address.id",
+    )
+    crypto_wallets: Mapped[list["CryptoWallet"]] = relationship(
+        back_populates="contact",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="CryptoWallet.id",
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -89,3 +103,26 @@ class Address(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<Address id={self.id} contact_id={self.contact_id} type={self.type.value!r}>"
+
+
+class CryptoWallet(Base):
+    __tablename__ = "crypto_wallets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    contact_id: Mapped[int] = mapped_column(
+        ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    chain: Mapped[WalletChain] = mapped_column(
+        SqlEnum(
+            WalletChain,
+            values_callable=lambda values: [value.value for value in values],
+            native_enum=False,
+            validate_strings=True,
+            create_constraint=True,
+            name="wallet_chain",
+        ),
+        nullable=False,
+    )
+    address: Mapped[str] = mapped_column(String(256), nullable=False)
+
+    contact: Mapped[Contact] = relationship(back_populates="crypto_wallets")
