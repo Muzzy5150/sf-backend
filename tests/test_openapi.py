@@ -134,6 +134,21 @@ def test_contact_fields_are_described_and_have_examples(spec):
     assert schema["properties"]["full_name"]["description"]
 
 
+def test_nested_address_contract_is_documented(spec):
+    schemas = spec["components"]["schemas"]
+    assert schemas["AddressType"]["enum"] == ["Home", "Work", "Other"]
+    assert schemas["ContactCreate"]["properties"]["addresses"]["items"]["$ref"].endswith(
+        "/AddressInput"
+    )
+    assert schemas["ContactRead"]["properties"]["addresses"]["items"]["$ref"].endswith(
+        "/AddressRead"
+    )
+    assert "id" in schemas["AddressRead"]["required"]
+    assert {"address", "city", "state", "postal_code", "country"}.isdisjoint(
+        schemas["ContactRead"]["properties"]
+    )
+
+
 def test_request_bodies_carry_examples(spec):
     create = spec["components"]["schemas"]["ContactCreate"]
     assert len(create["examples"]) == 2

@@ -1,6 +1,7 @@
 from app.crud import count_contacts, create_contact
 from app.database import SessionLocal
-from app.schemas import ContactCreate
+from app.models import AddressType
+from app.schemas import AddressInput, ContactCreate
 
 SAMPLE_CONTACTS = [
     ContactCreate(
@@ -10,9 +11,24 @@ SAMPLE_CONTACTS = [
         phone="+1-415-555-0101",
         company="Analytical Engines",
         job_title="Mathematician",
-        city="San Francisco",
-        state="CA",
-        country="USA",
+        addresses=[
+            AddressInput(
+                type=AddressType.HOME,
+                address="1 Market St",
+                city="San Francisco",
+                state="CA",
+                postal_code="94105",
+                country="USA",
+            ),
+            AddressInput(
+                type=AddressType.WORK,
+                address="88 Market St",
+                city="San Francisco",
+                state="CA",
+                postal_code="94105",
+                country="USA",
+            ),
+        ],
         notes="First programmer.",
     ),
     ContactCreate(
@@ -22,9 +38,16 @@ SAMPLE_CONTACTS = [
         phone="+1-415-555-0102",
         company="US Navy",
         job_title="Rear Admiral",
-        city="Arlington",
-        state="VA",
-        country="USA",
+        addresses=[
+            AddressInput(
+                type=AddressType.WORK,
+                address="2000 Navy Pentagon",
+                city="Arlington",
+                state="VA",
+                postal_code="22202",
+                country="USA",
+            )
+        ],
     ),
     ContactCreate(
         first_name="Alan",
@@ -33,8 +56,14 @@ SAMPLE_CONTACTS = [
         phone="+44-20-5555-0103",
         company="Bletchley Park",
         job_title="Cryptanalyst",
-        city="London",
-        country="UK",
+        addresses=[
+            AddressInput(
+                type=AddressType.OTHER,
+                address="Bletchley Park",
+                city="Milton Keynes",
+                country="UK",
+            )
+        ],
     ),
 ]
 
