@@ -55,9 +55,10 @@ def create_contact(payload: ContactCreate, db: Session = Depends(get_db)) -> Con
     """
     Store a new contact.
 
-    `first_name`, `last_name`, and `email` are required; every other field is
-    optional. The email must be unique — a duplicate (compared case-insensitively)
-    is rejected with `409 Conflict` rather than creating a second record.
+    `first_name`, `last_name`, and `email` are required; the nested `addresses`
+    collection may be empty or contain typed Home, Work, and Other addresses.
+    The email must be unique — a duplicate (compared case-insensitively) is
+    rejected with `409 Conflict` rather than creating a second record.
     """
     _reject_duplicate_email(db, payload.email)
     return crud.create_contact(db, payload)
@@ -138,7 +139,8 @@ def replace_contact(
     Replace every field of an existing contact.
 
     This is a true `PUT`: optional fields you leave out of the body are cleared
-    to `null`. To change a subset of fields, use `PATCH` instead.
+    to `null`, and the submitted `addresses` become the complete new collection.
+    To change a subset of fields, use `PATCH` instead.
     """
     contact = _get_or_404(db, contact_id)
     _reject_duplicate_email(db, payload.email, exclude_id=contact_id)
@@ -161,9 +163,10 @@ def update_contact(
     """
     Update only the fields present in the request body.
 
-    Fields you omit keep their current value. Re-sending a contact's own email
-    address is allowed; using an email that belongs to a different contact
-    returns `409 Conflict`.
+    Fields you omit keep their current value, including `addresses`. Supplying
+    `addresses` replaces the collection. Re-sending a contact's own email address
+    is allowed; using an email that belongs to a different contact returns
+    `409 Conflict`.
     """
     contact = _get_or_404(db, contact_id)
     if payload.email is not None:

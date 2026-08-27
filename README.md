@@ -108,8 +108,12 @@ also read):
 
 ```
 first_name, last_name, email, phone, company, job_title,
-address, city, state, postal_code, country, notes, photo
+notes, photo, addresses[]
 ```
+
+Each nested address has a `type` (`Home`, `Work`, or `Other`), required street
+`address`, and optional `city`, `state`, `postal_code`, and `country`. Addresses
+are stored in their own table with a foreign key to the contact.
 
 `photo` accepts a base64 data URI containing JPEG, PNG, or WebP image data up to
 2 MB. It is stored directly with the contact, which keeps the in-memory demo
