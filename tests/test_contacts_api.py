@@ -1,3 +1,15 @@
+import base64
+from unittest.mock import patch
+
+import pytest
+
+from app.schemas import (
+    MAX_PHOTO_BYTES,
+    MAX_PHOTO_DATA_URI_CHARS,
+    _validate_photo_data_uri,
+)
+
+
 BASE = "/api/v1/contacts"
 
 
@@ -40,6 +52,50 @@ def test_get_contact(client, payload):
     response = client.get(f"{BASE}/{contact_id}")
     assert response.status_code == 200
     assert response.json()["id"] == contact_id
+
+
+def test_photo_is_persisted_and_returned(client, payload, photo_data_uri):
+    created = client.post(BASE, json={**payload, "photo": photo_data_uri})
+    assert created.status_code == 201
+    contact_id = created.json()["id"]
+    assert created.json()["photo"] == photo_data_uri
+
+    assert client.get(f"{BASE}/{contact_id}").json()["photo"] == photo_data_uri
+    assert client.get(BASE).json()["items"][0]["photo"] == photo_data_uri
+
+
+@pytest.mark.parametrize(
+    "photo",
+    [
+        "not-a-data-uri",
+        "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+        "data:image/png;base64,not-valid-base64!",
+        "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUg==",
+    ],
+)
+def test_rejects_invalid_photos(client, payload, photo):
+    response = client.post(BASE, json={**payload, "photo": photo})
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"][-1] == "photo"
+
+
+def test_rejects_photo_larger_than_limit(client, payload):
+    oversized_png = b"\x89PNG\r\n\x1a\n" + b"x" * (MAX_PHOTO_BYTES - 7)
+    photo = f"data:image/png;base64,{base64.b64encode(oversized_png).decode()}"
+
+    response = client.post(BASE, json={**payload, "photo": photo})
+    assert response.status_code == 422
+    assert "2 MB or smaller" in response.json()["detail"][0]["msg"]
+
+
+def test_rejects_oversized_data_uri_before_decoding():
+    photo = "data:image/png;base64," + "A" * (MAX_PHOTO_DATA_URI_CHARS + 1)
+
+    with patch("app.schemas.base64.b64decode") as decode:
+        with pytest.raises(ValueError, match="2 MB or smaller"):
+            _validate_photo_data_uri(photo)
+
+    decode.assert_not_called()
 
 
 def test_get_missing_contact_returns_404(client):
@@ -91,14 +147,15 @@ def test_list_rejects_bad_sort_field(client):
     assert client.get(BASE, params={"sort_by": "; DROP TABLE contacts"}).status_code == 422
 
 
-def test_patch_updates_only_sent_fields(client, payload):
-    contact_id = client.post(BASE, json=payload).json()["id"]
+def test_patch_updates_only_sent_fields(client, payload, photo_data_uri):
+    contact_id = client.post(BASE, json={**payload, "photo": photo_data_uri}).json()["id"]
     response = client.patch(f"{BASE}/{contact_id}", json={"phone": "+1-000-000-0000"})
     assert response.status_code == 200
     body = response.json()
     assert body["phone"] == "+1-000-000-0000"
     assert body["first_name"] == "Ada"
     assert body["company"] == "Analytical Engines"
+    assert body["photo"] == photo_data_uri
 
 
 def test_patch_duplicate_email_conflicts(client, payload):
@@ -124,6 +181,22 @@ def test_put_replaces_contact(client, payload):
     body = response.json()
     assert body["full_name"] == "Grace Hopper"
     assert body["company"] is None  # omitted fields are cleared by PUT
+
+
+def test_put_persists_photo_when_included(client, payload, photo_data_uri):
+    contact_id = client.post(BASE, json={**payload, "photo": photo_data_uri}).json()["id"]
+    response = client.put(
+        f"{BASE}/{contact_id}",
+        json={
+            "first_name": "Grace",
+            "last_name": "Hopper",
+            "email": "grace@example.com",
+            "photo": photo_data_uri,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["photo"] == photo_data_uri
 
 
 def test_put_missing_contact_returns_404(client):

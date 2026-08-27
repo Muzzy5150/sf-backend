@@ -1,6 +1,52 @@
+import base64
+import binascii
 from datetime import datetime, timezone
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+
+
+MAX_PHOTO_BYTES = 2 * 1024 * 1024
+MAX_PHOTO_DATA_URI_CHARS = 2_800_000
+ALLOWED_PHOTO_MIME_TYPES = ("image/jpeg", "image/png", "image/webp")
+
+
+def _validate_photo_data_uri(value: str) -> str:
+    if len(value) > MAX_PHOTO_DATA_URI_CHARS:
+        raise ValueError("Photo must be 2 MB or smaller")
+
+    header, separator, encoded = value.partition(",")
+    if not separator or not encoded:
+        raise ValueError("Photo must be a base64-encoded image data URI")
+
+    mime_type = header.removeprefix("data:").removesuffix(";base64")
+    if header != f"data:{mime_type};base64" or mime_type not in ALLOWED_PHOTO_MIME_TYPES:
+        raise ValueError("Photo must be a JPEG, PNG, or WebP image")
+
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("Photo contains invalid base64 data") from error
+
+    if len(content) > MAX_PHOTO_BYTES:
+        raise ValueError("Photo must be 2 MB or smaller")
+
+    signatures_match = {
+        "image/jpeg": content.startswith(b"\xff\xd8\xff"),
+        "image/png": content.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": (
+            len(content) >= 12
+            and content.startswith(b"RIFF")
+            and content[8:12] == b"WEBP"
+        ),
+    }
+    if not signatures_match[mime_type]:
+        raise ValueError("Photo content does not match its declared image type")
+
+    return value
+
+
+PhotoDataUri = Annotated[str, AfterValidator(_validate_photo_data_uri)]
 
 
 class ContactBase(BaseModel):
@@ -69,6 +115,14 @@ class ContactBase(BaseModel):
         description="Free-form notes about the contact. No length limit.",
         examples=["Met at the SF hackathon."],
     )
+    photo: PhotoDataUri | None = Field(
+        default=None,
+        max_length=MAX_PHOTO_DATA_URI_CHARS,
+        description=(
+            "Optional base64 data URI for a JPEG, PNG, or WebP profile photo. "
+            "Decoded image data must be 2 MB or smaller."
+        ),
+    )
 
 
 _FULL_EXAMPLE = {
@@ -134,6 +188,11 @@ class ContactUpdate(BaseModel):
     postal_code: str | None = Field(default=None, max_length=20, description="New postal code.")
     country: str | None = Field(default=None, max_length=120, description="New country.")
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
+    photo: PhotoDataUri | None = Field(
+        default=None,
+        max_length=MAX_PHOTO_DATA_URI_CHARS,
+        description="New profile photo data URI; send null to remove the current photo.",
+    )
 
 
 class ContactRead(ContactBase):
