@@ -1,8 +1,13 @@
 import base64
+from unittest.mock import patch
 
 import pytest
 
-from app.schemas import MAX_PHOTO_BYTES
+from app.schemas import (
+    MAX_PHOTO_BYTES,
+    MAX_PHOTO_DATA_URI_CHARS,
+    _validate_photo_data_uri,
+)
 
 
 BASE = "/api/v1/contacts"
@@ -81,6 +86,16 @@ def test_rejects_photo_larger_than_limit(client, payload):
     response = client.post(BASE, json={**payload, "photo": photo})
     assert response.status_code == 422
     assert "2 MB or smaller" in response.json()["detail"][0]["msg"]
+
+
+def test_rejects_oversized_data_uri_before_decoding():
+    photo = "data:image/png;base64," + "A" * (MAX_PHOTO_DATA_URI_CHARS + 1)
+
+    with patch("app.schemas.base64.b64decode") as decode:
+        with pytest.raises(ValueError, match="2 MB or smaller"):
+            _validate_photo_data_uri(photo)
+
+    decode.assert_not_called()
 
 
 def test_get_missing_contact_returns_404(client):

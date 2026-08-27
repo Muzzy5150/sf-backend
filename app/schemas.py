@@ -12,6 +12,9 @@ ALLOWED_PHOTO_MIME_TYPES = ("image/jpeg", "image/png", "image/webp")
 
 
 def _validate_photo_data_uri(value: str) -> str:
+    if len(value) > MAX_PHOTO_DATA_URI_CHARS:
+        raise ValueError("Photo must be 2 MB or smaller")
+
     header, separator, encoded = value.partition(",")
     if not separator or not encoded:
         raise ValueError("Photo must be a base64-encoded image data URI")
