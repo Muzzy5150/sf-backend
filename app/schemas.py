@@ -5,7 +5,7 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
 
-from app.models import AddressType
+from app.models import AddressType, WalletChain
 
 
 MAX_PHOTO_BYTES = 2 * 1024 * 1024
@@ -103,6 +103,25 @@ class AddressRead(AddressInput):
     id: int = Field(description="Server-assigned address identifier.", examples=[1])
 
 
+class CryptoWalletInput(BaseModel):
+    chain: WalletChain = Field(description="Supported blockchain network.", examples=["Solana"])
+    address: str = Field(min_length=1, max_length=256, description="Public wallet address.")
+
+    @field_validator("address")
+    @classmethod
+    def _wallet_address_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Wallet address must not be blank")
+        return value
+
+
+class CryptoWalletRead(CryptoWalletInput):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+
+
 class ContactBase(BaseModel):
     """Fields shared by every contact request and response."""
 
@@ -190,6 +209,7 @@ class ContactCreate(ContactBase):
         default_factory=list,
         description="Postal addresses for the contact. An empty list is valid.",
     )
+    crypto_wallets: list[CryptoWalletInput] = Field(default_factory=list)
 
 
 class ContactReplace(ContactBase):
@@ -206,6 +226,7 @@ class ContactReplace(ContactBase):
         default_factory=list,
         description="Complete replacement address collection. Omit or send [] to clear it.",
     )
+    crypto_wallets: list[CryptoWalletInput] = Field(default_factory=list)
 
 
 class ContactUpdate(BaseModel):
@@ -235,6 +256,10 @@ class ContactUpdate(BaseModel):
         default_factory=list,
         description="Replacement address collection. Omit this field to preserve current addresses.",
     )
+    crypto_wallets: list[CryptoWalletInput] = Field(
+        default_factory=list,
+        description="Replacement wallet collection. Omit this field to preserve current wallets.",
+    )
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
     photo: PhotoDataUri | None = Field(
         default=None,
@@ -263,6 +288,7 @@ class ContactRead(ContactBase):
 
     id: int = Field(description="Server-assigned identifier.", examples=[1])
     addresses: list[AddressRead] = Field(description="Stored postal addresses for this contact.")
+    crypto_wallets: list[CryptoWalletRead] = Field(description="Public crypto wallets for this contact.")
     created_at: datetime = Field(
         description="UTC timestamp of when the contact was created.",
         examples=["2026-08-19T16:22:58.189507Z"],

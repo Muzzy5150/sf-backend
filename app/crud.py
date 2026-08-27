@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Address, Contact
-from app.schemas import AddressInput, ContactCreate, ContactReplace, ContactUpdate
+from app.models import Address, Contact, CryptoWallet
+from app.schemas import AddressInput, ContactCreate, ContactReplace, ContactUpdate, CryptoWalletInput
 
 SORTABLE_FIELDS = ("id", "first_name", "last_name", "email", "company", "created_at", "updated_at")
 
@@ -15,6 +15,10 @@ def _normalize_email(email: str) -> str:
 
 def _address_models(addresses: list[AddressInput]) -> list[Address]:
     return [Address(**address.model_dump()) for address in addresses]
+
+
+def _wallet_models(wallets: list[CryptoWalletInput]) -> list[CryptoWallet]:
+    return [CryptoWallet(**wallet.model_dump()) for wallet in wallets]
 
 
 def get_contact(db: Session, contact_id: int) -> Contact | None:
@@ -66,9 +70,13 @@ def list_contacts(
 
 
 def create_contact(db: Session, payload: ContactCreate) -> Contact:
-    data = payload.model_dump(exclude={"addresses"})
+    data = payload.model_dump(exclude={"addresses", "crypto_wallets"})
     data["email"] = _normalize_email(data["email"])
-    contact = Contact(**data, addresses=_address_models(payload.addresses))
+    contact = Contact(
+        **data,
+        addresses=_address_models(payload.addresses),
+        crypto_wallets=_wallet_models(payload.crypto_wallets),
+    )
     db.add(contact)
     db.commit()
     db.refresh(contact)
@@ -76,9 +84,10 @@ def create_contact(db: Session, payload: ContactCreate) -> Contact:
 
 
 def replace_contact(db: Session, contact: Contact, payload: ContactReplace) -> Contact:
-    for field, value in payload.model_dump(exclude={"addresses"}).items():
+    for field, value in payload.model_dump(exclude={"addresses", "crypto_wallets"}).items():
         setattr(contact, field, _normalize_email(value) if field == "email" else value)
     contact.addresses = _address_models(payload.addresses)
+    contact.crypto_wallets = _wallet_models(payload.crypto_wallets)
     # Relationship-only changes do not automatically update a column on the
     # parent row, so explicitly mark the contact's modification time.
     contact.updated_at = datetime.now(timezone.utc)
@@ -88,11 +97,14 @@ def replace_contact(db: Session, contact: Contact, payload: ContactReplace) -> C
 
 
 def update_contact(db: Session, contact: Contact, payload: ContactUpdate) -> Contact:
-    changes = payload.model_dump(exclude_unset=True, exclude={"addresses"})
+    changes = payload.model_dump(exclude_unset=True, exclude={"addresses", "crypto_wallets"})
     for field, value in changes.items():
         setattr(contact, field, _normalize_email(value) if field == "email" else value)
     if "addresses" in payload.model_fields_set:
         contact.addresses = _address_models(payload.addresses)
+        contact.updated_at = datetime.now(timezone.utc)
+    if "crypto_wallets" in payload.model_fields_set:
+        contact.crypto_wallets = _wallet_models(payload.crypto_wallets)
         contact.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(contact)
