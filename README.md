@@ -108,8 +108,12 @@ also read):
 
 ```
 first_name, last_name, email, phone, company, job_title,
-address, city, state, postal_code, country, notes
+address, city, state, postal_code, country, notes, photo
 ```
+
+`photo` accepts a base64 data URI containing JPEG, PNG, or WebP image data up to
+2 MB. It is stored directly with the contact, which keeps the in-memory demo
+self-contained without external file storage.
 
 Responses add `id`, `full_name`, `created_at`, and `updated_at` (UTC).
 
